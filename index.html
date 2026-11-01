@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="fr"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#14202B">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<title>Wortschatz</title>
+<style>
+:root{--bg:#EEF2F5;--ink:#14202B;--mut:#5B6B79;--card:#fff;--line:#D3DCE3;--acc:#14202B;--der:#2B6CB0;--die:#C0392B;--das:#2F855A}
+@media(prefers-color-scheme:dark){:root{--bg:#0F1720;--ink:#E8EEF3;--mut:#93A3B1;--card:#18232E;--line:#2A3846;--acc:#E8EEF3;--der:#63A4E8;--die:#F0766A;--das:#5CC78F}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,sans-serif;padding-bottom:76px}
+main{max-width:560px;margin:0 auto;padding:16px}
+h1{font:700 26px Georgia,serif;margin:8px 0 16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;margin:0 0 12px}
+input,textarea,button{font:inherit;color:inherit}
+input,textarea{width:100%;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);margin:6px 0}
+button{background:var(--acc);color:var(--bg);border:0;border-radius:8px;padding:12px 16px;font-weight:600;width:100%;margin-top:6px}
+button.sec{background:transparent;color:var(--ink);border:1px solid var(--line)}
+button:disabled{opacity:.5}
+.w{font:700 22px Georgia,serif}.art{font-weight:700;margin-right:6px}
+.der{color:var(--der)}.die{color:var(--die)}.das{color:var(--das)}
+.mut{color:var(--mut);font-size:14px}.ok{color:var(--das);font-weight:700}.ko{color:var(--die);font-weight:700}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--card);border-top:1px solid var(--line)}
+nav button{flex:1;background:none;color:var(--mut);border-radius:0;margin:0;padding:16px 4px}
+nav button.on{color:var(--ink);box-shadow:inset 0 3px 0 var(--ink)}
+.row{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+:focus-visible{outline:2px solid var(--der);outline-offset:2px}
+</style></head><body><main>
+<h1 id="t">Wortschatz</h1><div id="v"></div></main>
+<nav id="nav"></nav>
+<script>
+const $=s=>document.querySelector(s);
+const LS={get:(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch(e){return d}},set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+let words=LS.get('words',[]),tab='review',cur=null;
+const DAYS=[0,1,2,4,8,16,32],save=()=>LS.set('words',words);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const cls=a=>({der:'der',die:'die',das:'das'}[(a||'').toLowerCase()]||'');
+async function ai(system,user){
+  const key=LS.get('key','');if(!key)throw new Error('Ajoute ta clé API dans Réglages.');
+  const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1000,system:system+' Réponds uniquement en JSON valide, sans texte autour ni balises.',messages:[{role:'user',content:user}]})});
+  const d=await r.json();if(!r.ok)throw new Error(d.error?.message||'Erreur API');
+  const t=d.content.map(c=>c.text||'').join('').replace(/```json|```/g,'').trim();return JSON.parse(t);
+}
+const SYS_DEF='Tu es un professeur d\'allemand pour un francophone. Pour le mot donné, renvoie {"mot":"forme correcte","article":"der|die|das|\'\'","pluriel":"","traduction":"en français","definition":"définition simple en allemand (niveau A2-B1)","exemples":[{"de":"","fr":""},{"de":"","fr":""}],"astuce":"astuce mnémotechnique en français"}.';
+const SYS_COR='Tu es un professeur d\'allemand bienveillant. L\'élève (francophone) a écrit une phrase avec un mot cible. Renvoie {"correct":true|false,"phrase_corrigee":"","explication":"explication courte en français des erreurs (grammaire, cas, ordre des mots, mot cible bien utilisé ?)","variante":"une phrase naturelle modèle avec le mot"}.';
+const due=()=>words.filter(w=>w.next<=Date.now()).sort((a,b)=>a.box-b.box||a.next-b.next);
+function card(w){return `<div class="card"><div class="w"><span class="art ${cls(w.article)}">${esc(w.article)}</span>${esc(w.mot)}</div>
+<div class="mut">${w.pluriel?'Pluriel : '+esc(w.pluriel):''}</div><p><b>${esc(w.traduction)}</b><br>${esc(w.definition)}</p>
+${(w.exemples||[]).map(e=>`<p>${esc(e.de)}<br><span class="mut">${esc(e.fr)}</span></p>`).join('')}<p class="mut">💡 ${esc(w.astuce)}</p></div>`}
+function render(){
+  $('#nav').innerHTML=[['review','Réviser'],['add','Ajouter'],['list','Mots'],['set','Réglages']].map(([k,l])=>`<button class="${tab==k?'on':''}" onclick="go('${k}')">${l}</button>`).join('');
+  $('#t').textContent={review:'Réviser',add:'Nouveau mot',list:'Mes mots ('+words.length+')',set:'Réglages'}[tab];
+  const v=$('#v');
+  if(tab=='add')v.innerHTML=`<input id="nw" placeholder="Mot allemand (ex. Fernweh)" autocapitalize="off"><button id="ab" onclick="addW()">Ajouter et définir</button><div id="out"></div>`;
+  if(tab=='list')v.innerHTML=words.length?words.slice().reverse().map(card).join(''):'<p class="mut">Aucun mot pour l\'instant. Ajoute ton premier mot.</p>';
+  if(tab=='set')v.innerHTML=`<div class="card"><p>Clé API Anthropic (stockée uniquement sur ce téléphone)</p><input id="k" type="password" value="${esc(LS.get('key',''))}"><button onclick="LS.set('key',$('#k').value.trim());alert('Enregistré')">Enregistrer</button></div>`;
+  if(tab=='review')review();
+}
+function go(t){tab=t;cur=null;render()}
+async function addW(){
+  const m=$('#nw').value.trim();if(!m)return;const b=$('#ab');b.disabled=true;b.textContent='Recherche…';
+  try{const d=await ai(SYS_DEF,m);const w={...d,id:Date.now(),box:0,next:Date.now()};words.push(w);save();$('#out').innerHTML=card(w);$('#nw').value=''}
+  catch(e){$('#out').innerHTML='<p class="ko">'+esc(e.message)+'</p>'}
+  b.disabled=false;b.textContent='Ajouter et définir';
+}
+function review(){
+  const d=due(),v=$('#v');
+  if(!d.length){v.innerHTML=`<div class="card"><p>${words.length?'Rien à réviser pour l\'instant. Reviens plus tard.':'Ajoute ton premier mot pour commencer.'}</p></div>`;return}
+  cur=d[0];
+  v.innerHTML=`<p class="mut">${d.length} mot(s) à réviser</p><div class="card"><div class="w"><span class="art ${cls(cur.article)}">${esc(cur.article)}</span>${esc(cur.mot)}</div><p class="mut">Écris une phrase en allemand avec ce mot.</p></div>
+  <textarea id="s" rows="3" placeholder="Ta phrase…"></textarea><button id="cb" onclick="check()">Corriger</button><div id="fb"></div>`;
+}
+async function check(){
+  const s=$('#s').value.trim();if(!s)return;const b=$('#cb');b.disabled=true;b.textContent='Correction…';
+  try{const r=await ai(SYS_COR,`Mot cible : ${cur.mot}\nPhrase : ${s}`);
+    const i=Math.min(cur.box+(r.correct?1:0),DAYS.length-1);cur.box=r.correct?i:0;cur.next=Date.now()+(r.correct?DAYS[i]:0.1)*864e5;save();
+    $('#fb').innerHTML=`<div class="card"><p class="${r.correct?'ok':'ko'}">${r.correct?'Correct':'À corriger'}</p><p>${esc(r.phrase_corrigee)}</p><p>${esc(r.explication)}</p><p class="mut">Modèle : ${esc(r.variante)}</p></div><button class="sec" onclick="review()">Mot suivant</button>`;b.style.display='none';
+  }catch(e){$('#fb').innerHTML='<p class="ko">'+esc(e.message)+'</p>';b.disabled=false;b.textContent='Corriger'}
+}
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+render();
+</script></body></html>
